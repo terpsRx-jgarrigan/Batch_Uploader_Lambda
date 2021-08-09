@@ -33,7 +33,7 @@ const read_only_con = mysql.createConnection({
 });
 async function GetMedherentID() {
     read_only_con.query(
-        "select cu.user_id from medherent.consumer_users cu join users u on cu.user_id = u._id where cu.patient_code = ? and u.deactivated = 0",
+        "select cu.user_id from medherent.consumer_users cu join users u on cu.user_id = u._id where cu.patient_code = ?",
         [obj.patient_id],
         (error, results) => {
             if (error) throw error;
