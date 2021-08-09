@@ -12,6 +12,7 @@ let obj = {
     batch_identifier: undefined,
     file_batch_linking_id: undefined,
     patient_id: undefined,
+    medherent_id: undefined,
     patient_identifier: undefined,
     device_id: undefined,
     batch_number: undefined,
@@ -24,6 +25,29 @@ const con = mysql.createConnection({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
 });
+const read_only_con = mysql.createConnection({
+    host: "mh-db-server-read-replica.cgnilmixhass.us-east-1.rds.amazonaws.com",
+    user: "Joe",
+    password: "2b008ae3-6780-4da4-9dd5-449b7e12fa63",
+    database: "medherent"
+});
+async function GetMedherentID() {
+    read_only_con.query(
+        "select cu.user_id from medherent.consumer_users cu join users u on cu.user_id = u._id where cu.patient_code = ? and u.deactivated = 0",
+        [obj.patient_id],
+        (error, results) => {
+            if (error) throw error;
+            console.log(results);
+            if (results.length == 0) {
+                console.log("No medherent_id found. stopping now");
+                exit();
+            }
+            obj.medherent_id = results[0].user_id;
+            DoesFileExist();
+            
+        }
+    )
+}
 async function DoesFileExist() {
     con.query(
         "select count(id) as count from files where s3_key = ?",
@@ -34,7 +58,7 @@ async function DoesFileExist() {
             obj.does_file_exist = results[0].count;
             if (obj.does_file_exist > 0) {
                 console.log("File exists, stopping now");
-                exit();
+                throw new Error();
             }
             AddNewFile();
         }
@@ -71,8 +95,8 @@ async function DoesPatientExist() {
 }
 async function AddNewPatient() {
     con.query(
-        "insert into patients (patient_id, device_id) values (?, ?)",
-        [obj.patient_id,obj.device_id],
+        "insert into patients (patient_id, device_id, medherent_id) values (?, ?, ?)",
+        [obj.patient_id,obj.device_id,obj.medherent_id],
         (error, results) => {
             if (error) throw error;
             obj.patient_identifier = results.insertId;
@@ -171,7 +195,7 @@ async function run() {
     obj.device_id = obj.csv_rows[0].DEVICEID;
     obj.batch_number = obj.csv_rows[0].BATCHID;
     obj.bag_numbers = Array.from(new Set(obj.bag_numbers));
-    await DoesFileExist();
+    await GetMedherentID();
 }
 exports.handler = (event, context) => {
     obj.bucket = event.Records[0].s3.bucket.name;
